@@ -1,0 +1,12 @@
+.venv/
+venv/
+env/
+ENV/
+
+# Dataset folder
+dataset/
+dataset/*
+dataset/**/*
+
+# Specific files
+MELD.Raw.tar.gz
