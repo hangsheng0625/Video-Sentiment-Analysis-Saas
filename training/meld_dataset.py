@@ -1,5 +1,5 @@
 import torch
-from torch.utils.data import Dataset  
+from torch.utils.data import Dataset, DataLoader
 import pandas as pd                   
 from transformers import AutoTokenizer 
 import os                             
@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 import subprocess
 import torchaudio
+os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Disable parallelism to avoid warnings
 
 class MELDdataset(Dataset):
     def __init__(self, csv_path, video_dir):
@@ -130,36 +131,92 @@ class MELDdataset(Dataset):
         return len(self.data) 
     
     def __getitem__(self, idx):
-         # Get the data for the idx-th sample (row from CSV)
-        row = self.data.iloc[idx] 
+        # Convert tensor index to integer if necessary
+        if isinstance(idx, torch.Tensor):
+            idx = idx.item()  
         
-        # Construct the video filename using Dialogue_ID and Utterance_ID from the CSV row ("dia0_utt0.mp4")
-        video_filename = f"""dia{row['Dialogue_ID']}_utt{row['Utterance_ID']}.mp4"""
-        
-        # Build the full path to the video file (if self.video_dir is "../dataset/dev/dev_splits_complete", 
-        # the full path will be "../dataset/dev/dev_splits_complete/dia0_utt0.mp4")
-        path = os.path.join(self.video_dir, video_filename)
+        try:
+            
+            # Get the data for the idx-th sample (row from CSV)
+            row = self.data.iloc[idx] 
+            
+            # Construct the video filename using Dialogue_ID and Utterance_ID from the CSV row ("dia0_utt0.mp4")
+            video_filename = f"""dia{row['Dialogue_ID']}_utt{row['Utterance_ID']}.mp4"""
+            
+            # Build the full path to the video file (if self.video_dir is "../dataset/dev/dev_splits_complete", 
+            # the full path will be "../dataset/dev/dev_splits_complete/dia0_utt0.mp4")
+            path = os.path.join(self.video_dir, video_filename)
 
-        # Check if the video file exists at the constructed path
-        video_path_exists = os.path.exists(path)  
+            # Check if the video file exists at the constructed path
+            video_path_exists = os.path.exists(path)  
 
-        if video_path_exists == False:
-            raise FileNotFoundError(f"Video file not found: {path}")
-        
-        text_input = self.tokenizer(
-            row['Utterance'], 
-            padding='max_length', 
-            truncation=True, 
-            max_length=128, 
-            return_tensors='pt'
-        )
-        # print(row['Utterance'])
-        # print(text_input)
+            if video_path_exists == False:
+                raise FileNotFoundError(f"Video file not found: {path}")
+            
+            text_input = self.tokenizer(
+                row['Utterance'], 
+                padding='max_length', 
+                truncation=True, 
+                max_length=128, 
+                return_tensors='pt'
+            )
+            # print(row['Utterance'])
+            # print(text_input)
 
-        # video_frames = self._load_video_frame(path)
-        audio_features = self._extract_audio_features(path)
-        print(audio_features)
+            video_frames = self._load_video_frame(path)
+            audio_features = self._extract_audio_features(path)
+
+            # Map sentiment and emotion labels 
+            emotion_label = self.emotion_map[row['Emotion'].lower()]
+            sentiment_label = self.sentiment_map[row['Sentiment'].lower()]
+            # print(audio_features)
+
+            return {
+                'text_inputs':{
+                    'input_ids': text_input['input_ids'].squeeze(),
+                    'attention_mask': text_input['attention_mask'].squeeze(),
+                },
+                'video_frames': video_frames,
+                'audio_features': audio_features,
+                'emotion_label': emotion_label,
+                'sentiment_label': sentiment_label
+            }
+
+        except Exception as e:
+            print(f"Error processing index {path}: {str(e)}")
+            return None
+
+def collate_fn(batch):
+    # Filter out None entries
+    batch = list(filter(None, batch))
+    return torch.utils.data.dataloader.default_collate(batch)
+
+def prepare_dataloaders(train_csv, train_video_dir, dev_csv, dev_video_dir, test_csv, test_video_dir, batch_size=32):
+    tran_dataset = MELDdataset(train_csv, train_video_dir)
+    dev_dataset = MELDdataset(dev_csv, dev_video_dir)
+    test_dataset = MELDdataset(test_csv, test_video_dir)
+
+    train_loader = DataLoader(tran_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+    dev_loader = DataLoader(dev_dataset, batch_size=batch_size, collate_fn=collate_fn)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, collate_fn=collate_fn)
+
+    return train_loader, dev_loader, test_loader
+
 
 if __name__ == "__main__":
-    meld = MELDdataset("../dataset/dev/dev_sent_emo.csv", "../dataset/dev/dev_splits_complete")
-    print(meld[0])
+    # meld = MELDdataset("../dataset/dev/dev_sent_emo.csv", "../dataset/dev/dev_splits_complete")
+    # print(meld[0])
+
+    train_loader, dev_loader, test_loader = prepare_dataloaders(
+        "../dataset/train/train_sent_emo.csv", "../dataset/train/train_splits",
+        "../dataset/dev/dev_sent_emo.csv", "../dataset/dev/dev_splits_complete",
+        "../dataset/test/test_sent_emo.csv", "../dataset/test/output_repeated_splits_test"
+    )
+
+    for batch in train_loader:
+        print(batch['text_inputs'])
+        print(batch['video_frames'].shape)
+        print(batch['audio_features'].shape)
+        print(batch['emotion_label'])
+        print(batch['sentiment_label'])
+        break
