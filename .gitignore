@@ -8,5 +8,10 @@ dataset/
 dataset/*
 dataset/**/*
 
+training/runs/*
+training/__pycache__/
+
+
+
 # Specific files
 MELD.Raw.tar.gz
