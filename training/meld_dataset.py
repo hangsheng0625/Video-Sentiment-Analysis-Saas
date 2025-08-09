@@ -9,7 +9,7 @@ import subprocess
 import torchaudio
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Disable parallelism to avoid warnings
 
-class MELDdataset(Dataset):
+class MELDDataset(Dataset):
     def __init__(self, csv_path, video_dir):
         self.data = pd.read_csv(csv_path)  
         self.video_dir = video_dir         
@@ -74,7 +74,7 @@ class MELDdataset(Dataset):
 
         # Before permute: [frames, height, width, channels]
         # After permute: [channels, frames, height, width]
-        return torch.FloatTensor(np.array(frames)).permute(3, 0, 1, 2)  # Convert to (C, T, H, W) format
+        return torch.FloatTensor(np.array(frames)).permute(0, 3, 1, 2)  # Convert to (C, T, H, W) format
     
     def _extract_audio_features(self, video_path):
         audio_path = video_path.replace('.mp4', '.wav')
@@ -192,9 +192,9 @@ def collate_fn(batch):
     return torch.utils.data.dataloader.default_collate(batch)
 
 def prepare_dataloaders(train_csv, train_video_dir, dev_csv, dev_video_dir, test_csv, test_video_dir, batch_size=32):
-    tran_dataset = MELDdataset(train_csv, train_video_dir)
-    dev_dataset = MELDdataset(dev_csv, dev_video_dir)
-    test_dataset = MELDdataset(test_csv, test_video_dir)
+    tran_dataset = MELDDataset(train_csv, train_video_dir)
+    dev_dataset = MELDDataset(dev_csv, dev_video_dir)
+    test_dataset = MELDDataset(test_csv, test_video_dir)
 
     train_loader = DataLoader(tran_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
     dev_loader = DataLoader(dev_dataset, batch_size=batch_size, collate_fn=collate_fn)
