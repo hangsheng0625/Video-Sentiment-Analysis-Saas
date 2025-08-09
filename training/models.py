@@ -6,7 +6,7 @@ from sklearn.metrics import precision_score, accuracy_score
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 import os
-from meld_dataset import MELDdataset
+from meld_dataset import MELDDataset
 class TextEncoder(nn.Module):
     def __init__(self):
         super().__init__()
@@ -53,6 +53,8 @@ class VideoEncoder(nn.Module):
 
     def forward(self, x):
         # [Batch size, frames, channels, height, width] => [Batch size, channels, frames, height, width]
+        print(f"VideoEncoder input shape: {x.shape}")
+
         x = x.transpose(1, 2)  
         return self.backbone(x)
     
@@ -88,6 +90,9 @@ class AudioEncoder(nn.Module):
         x = x.squeeze(1)  
 
         features = self.conv_layers(x)
+
+        return self.projection(features.squeeze(-1))
+
 
 
 class MultimodalSentimentModel(nn.Module):
@@ -217,8 +222,8 @@ class MultimodalTrainer(nn.Module):
 
             video_frames = batch['video_frames'].to(device)
             audio_features = batch['audio_features'].to(device)
-            emotion_labels = batch['emotion_labels'].to(device)
-            sentiment_labels = batch['sentiment_labels'].to(device)
+            emotion_label = batch['emotion_label'].to(device)
+            sentiment_label = batch['sentiment_label'].to(device)
             
             # Zero the gradients
             self.optimizer.zero_grad()
@@ -227,8 +232,8 @@ class MultimodalTrainer(nn.Module):
             outputs = self.model(text_inputs, video_frames, audio_features)
 
             # Compute losses using raw digits
-            emotion_loss = self.emotion_criterion(outputs['emotion'], emotion_labels)
-            sentiment_loss = self.sentiment_criterion(outputs['sentiment'], sentiment_labels)
+            emotion_loss = self.emotion_criterion(outputs['emotion'], emotion_label)
+            sentiment_loss = self.sentiment_criterion(outputs['sentiment'], sentiment_label)
 
             total_loss = emotion_loss + sentiment_loss
 
@@ -273,22 +278,22 @@ class MultimodalTrainer(nn.Module):
 
                 video_frames = batch['video_frames'].to(device)
                 audio_features = batch['audio_features'].to(device)
-                emotion_labels = batch['emotion_labels'].to(device)
-                sentiment_labels = batch['sentiment_labels'].to(device)
+                emotion_label = batch['emotion_label'].to(device)
+                sentiment_label = batch['sentiment_label'].to(device)
 
                 # Forward pass
                 outputs = self.model(text_inputs, video_frames, audio_features)
 
                 # Compute losses
-                emotion_loss = self.emotion_criterion(outputs['emotion'], emotion_labels)
-                sentiment_loss = self.sentiment_criterion(outputs['sentiment'], sentiment_labels)
+                emotion_loss = self.emotion_criterion(outputs['emotion'], emotion_label)
+                sentiment_loss = self.sentiment_criterion(outputs['sentiment'], sentiment_label)
 
                 total_loss = emotion_loss + sentiment_loss
 
                 all_emotions_predictions.extend(outputs['emotion'].argmax(dim=1).cpu().numpy())
-                all_emotions_labels.extend(emotion_labels.cpu().numpy())
+                all_emotions_labels.extend(emotion_label.cpu().numpy())
                 all_sentiments_predictions.extend(outputs['sentiment'].argmax(dim=1).cpu().numpy())
-                all_sentiments_labels.extend(sentiment_labels.cpu().numpy())
+                all_sentiments_labels.extend(sentiment_label.cpu().numpy())
 
                 # Track the losses
                 losses['total'] += total_loss.item()
