@@ -4,7 +4,7 @@ import torchaudio
 import torch
 from meld_dataset import prepare_dataloaders
 from models import MultimodalSentimentModel, MultimodalTrainer
-import tqdm
+from tqdm import tqdm
 import json
 from install_ffmpeg import install_ffmpeg
 import sys
@@ -57,7 +57,7 @@ def main():
         dev_csv= os.path.join(args.val_dir, 'dev_sent_emo.csv'),
         dev_video_dir= os.path.join(args.val_dir, 'dev_splits_complete'),
         test_csv= os.path.join(args.test_dir, 'test_sent_emo.csv'),
-        test_video_dir= os.path.join(args.test_dir, 'output_repeated_splits_test')
+        test_video_dir= os.path.join(args.test_dir, 'output_repeated_splits_test'),
         batch_size=args.batch_size,
     )
 
@@ -76,7 +76,7 @@ def main():
 
     for epoch in tqdm(range(args.epochs), desc="Epochs"):
         train_loss = trainer.train_epoch()
-        val_loss, val_metrics = trainer.evaluate()
+        val_loss, val_metrics = trainer.evaluate(val_loader)
 
         # Track metrics
         metrics_data['train_loss'].append(train_loss["total_loss"])
@@ -152,3 +152,6 @@ def main():
         }
     ]
 }))
+    
+if __name__ == "__main__":
+    main()
