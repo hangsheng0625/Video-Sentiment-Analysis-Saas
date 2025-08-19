@@ -17,20 +17,12 @@ class MELDDataset(Dataset):
 
         # Map emotion labels from text to integer indices for model training
         self.emotion_map = {
-            "anger": 0,
-            "disgust": 1,
-            "sadness": 2,
-            "joy": 3,
-            "neutral": 4,
-            "surprise": 5,
-            "fear": 6
+            'anger': 0, 'disgust': 1, 'fear': 2, 'joy': 3, 'neutral': 4, 'sadness': 5, 'surprise': 6
         }
 
         # Map sentiment labels from text to integer indices for model training
         self.sentiment_map = {
-            "negative": 0,
-            "positive": 1,
-            "neutral": 2
+            'negative': 0, 'neutral': 1, 'positive': 2
         }
 
     def _load_video_frame(self, video_path):

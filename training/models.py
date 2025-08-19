@@ -146,7 +146,75 @@ class MultimodalSentimentModel(nn.Module):
         sentiment_output = self.sentiment_classifier(fused_features)
 
         return {'emotion': emotion_output, 'sentiment': sentiment_output}
+
+
+def compute_class_weights(dataset):
+    """
+    Compute class weights for handling imbalanced datasets in emotion and sentiment classification.
     
+    This function addresses the class imbalance problem where some emotion/sentiment classes
+    appear much more frequently than others in the training data. It calculates inverse 
+    frequency weights to ensure the model pays equal attention to both common and rare classes.
+    
+    Args:
+        dataset: The training dataset (MELDDataset instance) to analyze
+        
+    Returns:
+        tuple: (emotion_weights, sentiment_weights) as torch tensors
+            - emotion_weights: Tensor of shape [7] with weights for each emotion class
+            - sentiment_weights: Tensor of shape [3] with weights for each sentiment class
+            
+    Example:
+        If dataset has 60% neutral, 30% joy, 10% anger emotions:
+        - neutral gets low weight (common class)
+        - anger gets high weight (rare class)
+        This forces the model to learn rare classes better.
+    """
+    emotion_counts = torch.zeros(7)
+    sentiment_counts = torch.zeros(3)
+    skipped = 0
+    total = len(dataset)
+
+    print("\Counting class distributions...")
+    for i in range(total):
+        sample = dataset[i]
+
+        if sample is None:
+            skipped += 1
+            continue
+
+        emotion_label = sample['emotion_label']
+        sentiment_label = sample['sentiment_label']
+
+        emotion_counts[emotion_label] += 1
+        sentiment_counts[sentiment_label] += 1
+
+    valid = total - skipped
+    print(f"Skipped samples: {skipped}/{total}")
+
+    print("\nClass distribution")
+    print("Emotions:")
+    emotion_map = {0: 'anger', 1: 'disgust', 2: 'fear',
+                   3: 'joy', 4: 'neutral', 5: 'sadness', 6: 'surprise'}
+    
+    for i, count in enumerate(emotion_counts):
+        print(f"{emotion_map[i]}: {count/valid:.2f}")
+
+    print("\nSentiments:")
+    sentiment_map = {0: 'negative', 1: 'neutral', 2: 'positive'}
+
+    for i, count in enumerate(sentiment_counts):
+        print(f"{sentiment_map[i]}: {count/valid:.2f}")
+
+    # Calculate class weights
+    emotion_weights = 1.0 / emotion_counts
+    sentiment_weights = 1.0 / sentiment_counts
+
+    # Normalize weights
+    emotion_weights = emotion_weights / emotion_weights.sum()
+    sentiment_weights = sentiment_weights / sentiment_weights.sum()
+
+    return emotion_weights, sentiment_weights
 
 class MultimodalTrainer(nn.Module):
     def __init__(self, model, train_loader, val_loader):
@@ -188,8 +256,20 @@ class MultimodalTrainer(nn.Module):
 
         self.current_train_losses = None
 
-        self.emotion_criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
-        self.sentiment_criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
+        # Calculate class weights for emotion and sentiment
+        emotion_weights, sentiment_weights = compute_class_weights(train_loader.dataset)
+
+        device = next(model.parameters()).device
+
+        self.emotion_weights = emotion_weights.to(device)
+        self.sentiment_weights = sentiment_weights.to(device)
+
+        print("\nClass weights:")
+        print("Emotion weights:", self.emotion_weights.device)
+        print("Sentiment weights:", self.sentiment_weights.device)
+
+        self.emotion_criterion = nn.CrossEntropyLoss(label_smoothing=0.05, weight=self.emotion_weights)
+        self.sentiment_criterion = nn.CrossEntropyLoss(label_smoothing=0.05, weight=self.sentiment_weights)
 
     def log_metrics(self, losses, metrics=None, phase='train'):
         if phase == 'train':
